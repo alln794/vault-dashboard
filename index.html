@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vault Capital — CRM Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="funnelMetricsService.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -216,6 +217,44 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .ops-stat{text-align:right}
 .ops-stat-val{font-family:'Space Mono',monospace;font-size:13px;font-weight:700}
 .ops-stat-label{font-size:9px;color:var(--muted);letter-spacing:0.5px}
+/* ── MOTOR AUC ── */
+.motor-funnel{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}
+.motor-step{
+  display:grid;grid-template-columns:140px 1fr 80px 80px 80px;
+  align-items:center;gap:10px;padding:8px 12px;
+  background:var(--bg3);border:1px solid var(--border2);border-radius:5px;
+  transition:border-color .18s;
+}
+.motor-step:hover{border-color:rgba(239,204,45,0.2)}
+.motor-step-label{font-size:11px;font-weight:500;color:var(--text)}
+.motor-step-bar-wrap{height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;display:flex}
+.motor-step-bar-c{height:100%;background:var(--gold);border-radius:3px 0 0 3px}
+.motor-step-bar-co{height:100%;background:var(--blue)}
+.motor-step-total{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;text-align:right}
+.motor-step-c{font-family:'Space Mono',monospace;font-size:11px;color:var(--gold);text-align:right}
+.motor-step-co{font-family:'Space Mono',monospace;font-size:11px;color:var(--blue);text-align:right}
+.motor-drop{font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;padding:1px 6px;margin-left:-4px}
+/* Tabela comparativa */
+.comp-table{width:100%;border-collapse:collapse;font-size:11px}
+.comp-table th{
+  font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;
+  padding:6px 10px;border-bottom:1px solid var(--border2);text-align:right;
+}
+.comp-table th:first-child{text-align:left}
+.comp-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.comp-table td:first-child{color:var(--muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+.comp-table td:nth-child(2){text-align:right;font-family:'Space Mono',monospace;font-weight:700;color:var(--gold)}
+.comp-table td:nth-child(3){text-align:right;font-family:'Space Mono',monospace;font-weight:700;color:var(--blue)}
+.comp-table tr:last-child td{border-bottom:none}
+/* Kpi row motor */
+.motor-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}
+/* Alert chip */
+.alert-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,69,96,0.08);border:1px solid rgba(255,69,96,0.25);
+  border-radius:4px;padding:6px 10px;font-size:10px;color:var(--red);
+  font-family:'Space Mono',monospace;margin-bottom:16px;
+}
 /* ── ALERT BOX ── */
 .alert-box{
   border:1px solid rgba(255,69,96,0.3);background:rgba(255,69,96,0.06);
@@ -283,6 +322,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       <div class="nav-item" onclick="showPanel('origem',this)">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 2 Q11 8 8 14 Q5 8 8 2" fill="currentColor" opacity=".5"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1"/></svg>
         Origem
+      </div>
+      <div class="nav-item" onclick="showPanel('motor',this)">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L10 6H15L11 9.5L12.5 15L8 12L3.5 15L5 9.5L1 6H6Z" fill="currentColor" opacity=".9"/></svg>
+        Motor AUC
+        <span class="badge" id="motor-badge" style="display:none">!</span>
       </div>
       <div class="nav-item" id="nav-ops" onclick="showPanel('operacional',this)">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="3" width="14" height="2" rx="1"/><rect x="1" y="7" width="10" height="2" rx="1"/><rect x="1" y="11" width="12" height="2" rx="1"/></svg>
@@ -554,6 +598,96 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
         </div>
       </div>
 
+      <!-- ─── MOTOR AUC ─── -->
+      <div class="panel" id="panel-motor">
+        <div class="section-header">
+          <span class="section-title">Motor de Métricas AUC</span>
+          <span class="section-sub">BASE: SAFRA / DATA DE CRIAÇÃO</span>
+        </div>
+
+        <!-- Alertas de Qualidade -->
+        <div id="motor-alerts-wrap"></div>
+
+        <!-- KPIs Derivados -->
+        <div class="motor-kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">% No-Show</div>
+            <div class="kpi-value red" id="m-pct-noshow">—</div>
+            <div class="kpi-sub">No-Show / Reun. Marcadas</div>
+          </div>
+          <div class="kpi-card positive">
+            <div class="kpi-label">% Conv. Reunião</div>
+            <div class="kpi-value gold" id="m-pct-reun">—</div>
+            <div class="kpi-sub">Realizadas / Conectados</div>
+          </div>
+          <div class="kpi-card positive">
+            <div class="kpi-label">% Conv. Final</div>
+            <div class="kpi-value green" id="m-pct-final">—</div>
+            <div class="kpi-sub">Clientes / Leads Novos</div>
+          </div>
+        </div>
+
+        <!-- Funil Visual -->
+        <div class="chart-card" style="margin-bottom:24px">
+          <div class="chart-title">FUNIL AUC — FLUXO DE CONVERSÃO</div>
+          <div class="legend" style="margin-bottom:14px">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--gold)"></div>Cesta Inteligente</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Consultoria</div>
+          </div>
+          <div class="motor-funnel" id="motor-funnel-steps"></div>
+        </div>
+
+        <!-- Tabela Comparativa + Gráfico -->
+        <div class="chart-grid chart-grid-2">
+          <div class="chart-card">
+            <div class="chart-title">COMPARATIVO — CESTA × CONSULTORIA</div>
+            <table class="comp-table" id="motor-comp-table">
+              <thead>
+                <tr>
+                  <th>Métrica</th>
+                  <th style="color:var(--gold)">Cesta</th>
+                  <th style="color:var(--blue)">Consultoria</th>
+                </tr>
+              </thead>
+              <tbody id="motor-comp-body"></tbody>
+            </table>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">FUNIL — CESTA × CONSULTORIA</div>
+            <div class="chart-wrap" style="height:280px"><canvas id="chart-motor-funnel"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Visão de Fechamento -->
+        <div class="divider"></div>
+        <div class="section-header" style="margin-top:0">
+          <span class="section-title" style="font-size:12px;letter-spacing:1px">VISÃO DE FECHAMENTO</span>
+          <span class="section-sub">BASE: DATA DE FECHAMENTO (closed_at)</span>
+        </div>
+        <div class="kpi-grid kpi-grid-4" style="margin-bottom:0">
+          <div class="kpi-card positive">
+            <div class="kpi-label">Ganhos no Período</div>
+            <div class="kpi-value green" id="m-ganhos-periodo">—</div>
+            <div class="kpi-sub" id="m-captacao-periodo">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Perdidos no Período</div>
+            <div class="kpi-value red" id="m-perdidos-periodo">—</div>
+            <div class="kpi-sub">Fechados como perdido</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Captação Total</div>
+            <div class="kpi-value gold sm" id="m-captacao-total">—</div>
+            <div class="kpi-sub" id="m-ticket-medio">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">No-Shows no Período</div>
+            <div class="kpi-value red" id="m-no-shows">—</div>
+            <div class="kpi-sub" id="m-pct-noshow-sub">—</div>
+          </div>
+        </div>
+      </div>
+
       <!-- ─── ORIGEM ─── -->
       <div class="panel" id="panel-origem">
         <div class="section-header">
@@ -676,10 +810,12 @@ const MOCK = {
     fernando_tasks: 13, fernando_atrasadas: 5,
     carlos_tasks: 14, carlos_atrasadas: 0
   },
+  motor_auc: null,  // populated from sheet or FunnelMetrics.MOCK_MOTOR_AUC
   last_updated: []
 };
 
 let DATA = JSON.parse(JSON.stringify(MOCK));
+DATA.motor_auc = JSON.parse(JSON.stringify(FunnelMetrics.MOCK_MOTOR_AUC));
 let currentPeriod = 'mes';
 
 // ═══════════════════════════════════════════════════
@@ -718,7 +854,7 @@ function parseCSVRow(line) {
 async function loadData() {
   setStatus('loading');
   const base = `https://docs.google.com/spreadsheets/d/${SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=`;
-  const tabs = ['executivo','funil','reunioes','receita','origem','operacional','last_updated'];
+  const tabs = ['executivo','funil','reunioes','receita','origem','operacional','motor_auc','last_updated'];
 
   try {
     const results = await Promise.all(
@@ -726,7 +862,7 @@ async function loadData() {
         .then(r => { if (!r.ok) throw new Error(t); return r.text(); })
       )
     );
-    const [exec, funil, reun, rec, orig, ops, lu] = results.map(parseCSV);
+    const [exec, funil, reun, rec, orig, ops, motor, lu] = results.map(parseCSV);
 
     // ── EXECUTIVO ──
     if (exec && exec.length > 0) {
@@ -837,6 +973,26 @@ async function loadData() {
       };
     }
 
+    // ── MOTOR AUC ──
+    if (motor && motor.length > 0) {
+      const r = motor[motor.length - 1];
+      const n = k => Number(r[k]) || 0;
+      DATA.motor_auc = {
+        leads_novos: n('leads_novos'), leads_novos_cesta: n('leads_novos_cesta'), leads_novos_consult: n('leads_novos_consult'), leads_novos_sem_tag: n('leads_novos_sem_tag'),
+        conectados: n('conectados'), conectados_cesta: n('conectados_cesta'), conectados_consult: n('conectados_consult'),
+        reunioes_marcadas: n('reunioes_marcadas'), reunioes_marc_cesta: n('reunioes_marc_cesta'), reunioes_marc_consult: n('reunioes_marc_consult'),
+        no_shows: n('no_shows'), no_shows_cesta: n('no_shows_cesta'), no_shows_consult: n('no_shows_consult'),
+        reunioes_feitas: n('reunioes_feitas'), reunioes_feitas_cesta: n('reunioes_feitas_cesta'), reunioes_feitas_consult: n('reunioes_feitas_consult'),
+        planos_acao: n('planos_acao'), planos_cesta: n('planos_cesta'), planos_consult: n('planos_consult'),
+        onboarding: n('onboarding'), onboarding_cesta: n('onboarding_cesta'), onboarding_consult: n('onboarding_consult'),
+        clientes_convertidos: n('clientes_convertidos'), clientes_cesta: n('clientes_cesta'), clientes_consult: n('clientes_consult'), clientes_sem_tag: n('clientes_sem_tag'),
+        captacao_total: n('captacao_total'), captacao_cesta: n('captacao_cesta'), captacao_consult: n('captacao_consult'),
+        ganhos_periodo: n('ganhos_periodo'), captacao_ganhos_periodo: n('captacao_ganhos_periodo'),
+        perdidos_periodo: n('perdidos_periodo'),
+        alertas_sem_tag: n('alertas_sem_tag'),
+      };
+    }
+
     // ── LAST UPDATED ──
     DATA.last_updated = lu || [];
 
@@ -901,6 +1057,7 @@ function renderAll() {
   renderReunioes();
   renderReceita();
   renderOrigem();
+  renderMotorAuc();
   renderOperacional();
   updateMetaDate();
 }
@@ -1221,6 +1378,108 @@ function renderOrigem() {
   }
 }
 
+// ── MOTOR AUC ──
+function renderMotorAuc() {
+  const m = DATA.motor_auc;
+  if (!m) return;
+  const kpi = FunnelMetrics.derivedKPIs(m);
+
+  // ── KPIs derivados ──
+  setText('m-pct-noshow',  kpi.pct_noshow + '%');
+  setText('m-pct-reun',    kpi.pct_conv_reuniao + '%');
+  setText('m-pct-final',   kpi.pct_conv_final + '%');
+
+  // ── Visão de Fechamento ──
+  setText('m-ganhos-periodo',   m.ganhos_periodo);
+  setText('m-captacao-periodo', 'Captação: ' + fmtR(m.captacao_ganhos_periodo));
+  setText('m-perdidos-periodo', m.perdidos_periodo);
+  setText('m-captacao-total',   fmtR(m.captacao_total));
+  setText('m-ticket-medio',     'Ticket médio: ' + fmtR(kpi.ticket_medio));
+  setText('m-no-shows',         m.no_shows);
+  setText('m-pct-noshow-sub',   kpi.pct_noshow + '% das marcadas');
+
+  // ── Alertas de Qualidade ──
+  const alertsWrap = document.getElementById('motor-alerts-wrap');
+  if (alertsWrap) {
+    const chips = [];
+    if (m.alertas_sem_tag > 0) {
+      chips.push(`<div class="alert-chip">⚠ ${m.alertas_sem_tag} lead(s) GANHO sem tag de produto — verificar no CRM</div>`);
+    }
+    if (m.leads_novos_sem_tag > 0) {
+      chips.push(`<div class="alert-chip" style="color:var(--orange);border-color:rgba(255,107,53,0.3);background:rgba(255,107,53,0.07)">⚠ ${m.leads_novos_sem_tag} lead(s) novo(s) sem produto definido</div>`);
+    }
+    alertsWrap.innerHTML = chips.join('');
+    // Badge no nav
+    const badge = document.getElementById('motor-badge');
+    if (badge) badge.style.display = chips.length > 0 ? '' : 'none';
+  }
+
+  // ── Funil Visual ──
+  const steps = FunnelMetrics.buildFunnelSteps(m);
+  const maxStep = Math.max(...steps.map(s => s.total), 1);
+  const stepsEl = document.getElementById('motor-funnel-steps');
+  if (stepsEl) {
+    stepsEl.innerHTML = steps.map((s, i) => {
+      const barW  = (s.total / maxStep * 100).toFixed(1);
+      const pctC  = s.total > 0 ? (s.c  / s.total * 100).toFixed(1) : 0;
+      const pctCo = s.total > 0 ? (s.co / s.total * 100).toFixed(1) : 0;
+      const prev  = i > 0 ? steps[i-1].total : s.total;
+      const drop  = prev > 0 && i > 0 ? ((1 - s.total / prev) * 100).toFixed(0) : null;
+      return `
+        <div class="motor-step">
+          <div class="motor-step-label">${s.label}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="motor-step-bar-wrap" style="flex:1">
+              <div class="motor-step-bar-c"  style="width:${pctC}%"></div>
+              <div class="motor-step-bar-co" style="width:${pctCo}%"></div>
+            </div>
+            ${drop !== null ? `<span class="motor-drop">▼${drop}%</span>` : ''}
+          </div>
+          <div class="motor-step-total" style="color:${s.total===0?'var(--muted)':'var(--text)'}">${s.total}</div>
+          <div class="motor-step-c">${s.c}</div>
+          <div class="motor-step-co">${s.co}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Tabela Comparativa ──
+  const rows = FunnelMetrics.buildCompTable(m);
+  const tbody = document.getElementById('motor-comp-body');
+  if (tbody) {
+    tbody.innerHTML = rows.map(r => {
+      const fmtC  = r.isStr ? r.c  : r.isCurrency ? fmtR(r.c)  : r.c;
+      const fmtCo = r.isStr ? r.co : r.isCurrency ? fmtR(r.co) : r.co;
+      return `<tr>
+        <td>${r.metric}</td>
+        <td>${fmtC}</td>
+        <td>${fmtCo}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Gráfico Funil Grouped Bar ──
+  const labels = steps.map(s => s.label);
+  makeChart('chart-motor-funnel', {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Cesta',       data: steps.map(s => s.c),  backgroundColor: G,  borderRadius: 3 },
+        { label: 'Consultoria', data: steps.map(s => s.co), backgroundColor: B,  borderRadius: 3 },
+        { label: 'Outros',      data: steps.map(s => Math.max(0, s.total - s.c - s.co)), backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, padding: 10 } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 8 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { stepSize: 1 } }
+      }
+    }
+  });
+}
+
 // ── OPERACIONAL ──
 function renderOperacional() {
   const o = DATA.operacional;
@@ -1305,12 +1564,13 @@ function renderOperacional() {
 // UI
 // ═══════════════════════════════════════════════════
 const PANEL_TITLES = {
-  executivo: 'Visão Executiva',
-  funil: 'Funil AUC',
-  reunioes: 'Reuniões de Diagnóstico',
-  receita: 'Captação & Performance',
-  origem: 'Origem & Canal',
-  operacional: 'Saúde Operacional'
+  executivo:  'Visão Executiva',
+  funil:      'Funil AUC',
+  reunioes:   'Reuniões de Diagnóstico',
+  receita:    'Captação & Performance',
+  motor:      'Motor de Métricas AUC',
+  origem:     'Origem & Canal',
+  operacional:'Saúde Operacional'
 };
 
 function showPanel(name, el) {
