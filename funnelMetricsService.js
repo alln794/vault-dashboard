@@ -4,10 +4,18 @@
  *
  * Responsabilidades:
  *   - Constantes do negócio (IDs, thresholds, stages)
- *   - Data Cleaning: resolve produto de leads sem tag
- *   - Regras de negócio: reunião realizada, alertas de qualidade
- *   - Derivados: KPIs calculados a partir de dados pré-agregados
- *   - Formatadores: funil visual, tabela comparativa Cesta × Consultoria
+ *   - computeMotorAUC(flatLeads, tsStart, tsEnd): cálculo puro por qualquer período
+ *   - derivedKPIs(m): métricas derivadas (percentuais, tickets)
+ *   - buildFunnelSteps(m): etapas para o gráfico de funil visual
+ *   - buildCompTable(m): linhas para a tabela comparativa Cesta × Consultoria
+ *   - Formatadores e mock data
+ *
+ * Schema de flatLead (aba leads_raw no Google Sheets):
+ *   id, created_at, status_id, closed_at, price,
+ *   has_tag_cesta, has_tag_consult, has_tag_noshow,
+ *   has_briefing, has_cobrar_dep, has_completed_task,
+ *   product, reached_reuniao, reached_plano
+ *   (todos numéricos; product é string 'cesta'|'consultoria'|'')
  *
  * NÃO contém lógica de UI. Importado por dashboard.html via <script src>.
  */
@@ -23,9 +31,9 @@ const FunnelMetrics = (() => {
     NOSHOW_TAG:         286395,
     STATUS_WON:         142,
     STATUS_LOST:        143,
-    THRESHOLD_CONSULT:  100000,   // R$ 100k → Consultoria (data cleaning)
-    CF_REUNIAO:         3871446,  // Data Reunião de Diagnóstico
-    CF_BRIEFING:        3871274,  // Briefing SDR — evidência de reunião realizada
+    THRESHOLD_CONSULT:  100000,
+    CF_REUNIAO:         3871446,
+    CF_BRIEFING:        3871274,
     PIPELINE_ID:        12655779,
     STAGES: Object.freeze({
       a_trabalhar:  97706575,
@@ -35,7 +43,6 @@ const FunnelMetrics = (() => {
       plano_acao:   97706583,
       fechamento:   97706763,
     }),
-    STAGE_ORDER: [97706575, 97708015, 97706579, 97706843, 97706583, 97706763],
     USERS: Object.freeze({
       EDUARDO:  14768039,
       FERNANDO: 14768083,
@@ -45,102 +52,116 @@ const FunnelMetrics = (() => {
   });
 
   // ══════════════════════════════════════════════════
-  // HELPERS INTERNOS
+  // COMPUTE MOTOR AUC — filtro dinâmico por período
   // ══════════════════════════════════════════════════
-
-  /** Retorna array de tag IDs do lead. */
-  function getTags(lead) {
-    return (lead._embedded?.tags || []).map(t => t.id);
-  }
-
-  /** Retorna o valor do primeiro campo customizado com field_id fornecido. */
-  function getCfValue(lead, fieldId) {
-    for (const cf of (lead.custom_fields_values || [])) {
-      if (cf.field_id === fieldId) {
-        const v = cf.values?.[0];
-        return v != null ? v.value : null;
-      }
-    }
-    return null;
-  }
-
-  /** Índice da etapa no funil (para comparação). -1 = WON/LOST/desconhecido. */
-  function stageIndex(lead) {
-    const idx = C.STAGE_ORDER.indexOf(lead.status_id);
-    return idx; // -1 se WON, LOST, ou não mapeado
-  }
-
-  // ══════════════════════════════════════════════════
-  // DATA CLEANING
-  // ══════════════════════════════════════════════════
-
   /**
-   * Resolve o produto de um lead com fallback automático.
+   * Calcula todas as métricas do Motor AUC a partir de leads planos (leads_raw).
+   * Puro: sem efeitos colaterais, sem DOM. Pode ser chamado com qualquer tsStart/tsEnd.
    *
-   * Regra crítica: leads GANHOS sem tag são erros operacionais.
-   * Auto-correção pelo valor do negócio:
-   *   - valor >= R$ 100k → Consultoria
-   *   - valor < R$ 100k  → Cesta
-   *
-   * @returns {'cesta' | 'consultoria' | null}
+   * @param {Array} flatLeads - array de objetos da aba leads_raw
+   * @param {number} tsStart  - timestamp Unix (início do período, criação)
+   * @param {number} tsEnd    - timestamp Unix (fim do período, exclusivo)
+   * @returns {Object} todas as métricas do Motor AUC
    */
-  function resolveProduct(lead) {
-    const tags = getTags(lead);
-    if (tags.includes(C.TAG_CONSULT)) return 'consultoria';
-    if (tags.includes(C.TAG_CESTA))   return 'cesta';
-    if (lead.status_id === C.STATUS_WON) {
-      return (lead.price || 0) >= C.THRESHOLD_CONSULT ? 'consultoria' : 'cesta';
-    }
-    return null;
+  function computeMotorAUC(flatLeads, tsStart, tsEnd) {
+    if (!flatLeads || !flatLeads.length) return { ...MOCK_MOTOR_AUC };
+
+    const n = v => Number(v) || 0;
+
+    // ── Safra: leads criados no período ──
+    const novos = flatLeads.filter(l => {
+      const ca = n(l.created_at);
+      return ca >= tsStart && ca < tsEnd;
+    });
+
+    // ── Helpers ──
+    const byProd = (lst, p) => lst.filter(l => l.product === p);
+    const cap    = lst => lst.reduce((s, l) => s + n(l.price), 0);
+
+    // ── Topo do Funil ──
+    // Conectados = Novos − em "Tentativa de Contato"
+    const conectados = novos.filter(l => n(l.status_id) !== C.STAGES.tentativa);
+
+    // ── Reuniões Marcadas ──
+    // Regra (prompt): leads que ATINGIRAM a etapa Reunião de Diagnóstico ou além
+    // reached_reuniao = 1 se status atual é reuniao_diag, plano_acao, fechamento, WON ou LOST
+    const marcadas = novos.filter(l => n(l.reached_reuniao) === 1);
+
+    // ── No-Show ──
+    const noShows = novos.filter(l => n(l.has_tag_noshow) === 1);
+
+    // ── Reuniões Realizadas ──
+    // Regra: marcadas ∩ sem no-show ∩ evidência (briefing OU cobrar dep OU avançou além)
+    const feitas = marcadas.filter(l =>
+      n(l.has_tag_noshow) === 0 &&
+      (n(l.has_briefing) === 1 || n(l.has_cobrar_dep) === 1 || n(l.reached_plano) === 1)
+    );
+
+    // ── Planos de Ação ──
+    const planos = novos.filter(l => n(l.status_id) === C.STAGES.plano_acao);
+    const planosRealizados = planos.filter(l => n(l.has_completed_task) === 1);
+
+    // ── Onboarding / Fechamento ──
+    const onboarding = novos.filter(l => n(l.status_id) === C.STAGES.fechamento);
+
+    // ── Clientes Convertidos ──
+    const clientes = novos.filter(l => n(l.status_id) === C.STATUS_WON);
+    const alertasSemTag = clientes.filter(l => !l.product);
+
+    // ── Visão de Fechamento (base: closed_at, TODOS os leads) ──
+    const ganhos   = flatLeads.filter(l => n(l.status_id) === C.STATUS_WON  && n(l.closed_at) >= tsStart && n(l.closed_at) < tsEnd);
+    const perdidos = flatLeads.filter(l => n(l.status_id) === C.STATUS_LOST && n(l.closed_at) >= tsStart && n(l.closed_at) < tsEnd);
+
+    return {
+      // Topo
+      leads_novos:              novos.length,
+      leads_novos_cesta:        byProd(novos, 'cesta').length,
+      leads_novos_consult:      byProd(novos, 'consultoria').length,
+      leads_novos_sem_tag:      novos.filter(l => !l.product).length,
+      conectados:               conectados.length,
+      conectados_cesta:         byProd(conectados, 'cesta').length,
+      conectados_consult:       byProd(conectados, 'consultoria').length,
+      // Meio
+      reunioes_marcadas:        marcadas.length,
+      reunioes_marc_cesta:      byProd(marcadas, 'cesta').length,
+      reunioes_marc_consult:    byProd(marcadas, 'consultoria').length,
+      no_shows:                 noShows.length,
+      no_shows_cesta:           byProd(noShows, 'cesta').length,
+      no_shows_consult:         byProd(noShows, 'consultoria').length,
+      reunioes_feitas:          feitas.length,
+      reunioes_feitas_cesta:    byProd(feitas, 'cesta').length,
+      reunioes_feitas_consult:  byProd(feitas, 'consultoria').length,
+      // Planos / Onboarding
+      planos_acao:              planos.length,
+      planos_cesta:             byProd(planos, 'cesta').length,
+      planos_consult:           byProd(planos, 'consultoria').length,
+      planos_realizados:        planosRealizados.length,
+      onboarding:               onboarding.length,
+      onboarding_cesta:         byProd(onboarding, 'cesta').length,
+      onboarding_consult:       byProd(onboarding, 'consultoria').length,
+      // Fundo
+      clientes_convertidos:     clientes.length,
+      clientes_cesta:           byProd(clientes, 'cesta').length,
+      clientes_consult:         byProd(clientes, 'consultoria').length,
+      clientes_sem_tag:         alertasSemTag.length,
+      captacao_total:           cap(clientes),
+      captacao_cesta:           cap(byProd(clientes, 'cesta')),
+      captacao_consult:         cap(byProd(clientes, 'consultoria')),
+      // Fechamento
+      ganhos_periodo:           ganhos.length,
+      captacao_ganhos_periodo:  cap(ganhos),
+      perdidos_periodo:         perdidos.length,
+      // Alertas
+      alertas_sem_tag:          alertasSemTag.length,
+    };
   }
 
+  // ══════════════════════════════════════════════════
+  // KPIs DERIVADOS
+  // ══════════════════════════════════════════════════
   /**
-   * Detecta lead ganho sem tag de produto (anomalia operacional).
-   * Esses leads DEVEM ser sinalizados para correção manual no CRM.
-   */
-  function isQualityAnomaly(lead) {
-    if (lead.status_id !== C.STATUS_WON) return false;
-    const tags = getTags(lead);
-    return !tags.includes(C.TAG_CESTA) && !tags.includes(C.TAG_CONSULT);
-  }
-
-  // ══════════════════════════════════════════════════
-  // REGRAS DE NEGÓCIO
-  // ══════════════════════════════════════════════════
-
-  /**
-   * Reunião Realizada (regra completa):
-   *   1. Lead NÃO tem tag no-show
-   *   2. Evidência de conclusão:
-   *      a. Briefing SDR preenchido (campo CF_BRIEFING), OU
-   *      b. Lead avançou para etapa posterior à reunião de diagnóstico
-   *         (Plano de Ação, Fechamento/Onboarding, Ganho, Perdido)
-   */
-  function isReuniaoRealizada(lead) {
-    if (getTags(lead).includes(C.NOSHOW_TAG)) return false;
-    // Evidência a: briefing preenchido
-    const briefing = getCfValue(lead, C.CF_BRIEFING);
-    if (briefing && String(briefing).trim().length > 0) return true;
-    // Evidência b: avançou além da etapa de reunião
-    const PAST_REUNIAO = new Set([
-      C.STAGES.plano_acao,
-      C.STAGES.fechamento,
-      C.STATUS_WON,
-      C.STATUS_LOST,
-    ]);
-    return PAST_REUNIAO.has(lead.status_id);
-  }
-
-  // ══════════════════════════════════════════════════
-  // KPIs DERIVADOS (a partir de dados pré-agregados do Sheets)
-  // ══════════════════════════════════════════════════
-
-  /**
-   * Calcula KPIs derivados a partir dos dados da sheet motor_auc.
+   * Calcula KPIs derivados a partir de um objeto de métricas Motor AUC.
    * Usa divisão segura (d > 0) para evitar NaN/Infinity.
-   *
-   * @param {Object} m - linha da sheet motor_auc
-   * @returns {Object} KPIs calculados
    */
   function derivedKPIs(m) {
     const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) : '0.0';
@@ -149,48 +170,42 @@ const FunnelMetrics = (() => {
       pct_conv_reuniao:  pct(m.reunioes_feitas,      m.conectados),
       pct_conv_final:    pct(m.clientes_convertidos, m.leads_novos),
       ticket_medio:      m.clientes_convertidos > 0
-        ? Math.round((m.captacao_total || 0) / m.clientes_convertidos)
-        : 0,
+        ? Math.round((m.captacao_total   || 0) / m.clientes_convertidos) : 0,
       ticket_cesta:      m.clientes_cesta > 0
-        ? Math.round((m.captacao_cesta  || 0) / m.clientes_cesta)
-        : 0,
+        ? Math.round((m.captacao_cesta   || 0) / m.clientes_cesta)       : 0,
       ticket_consult:    m.clientes_consult > 0
-        ? Math.round((m.captacao_consult || 0) / m.clientes_consult)
-        : 0,
+        ? Math.round((m.captacao_consult || 0) / m.clientes_consult)     : 0,
     };
   }
 
   // ══════════════════════════════════════════════════
   // FUNIL VISUAL
   // ══════════════════════════════════════════════════
-
   /**
    * Constrói array de etapas para o gráfico de funil visual.
-   * Cada etapa tem: label, total, c (cesta), co (consultoria).
+   * Prompt: Lead → Conectado → Reunião → Plano → Onboarding → Cliente
    */
   function buildFunnelSteps(m) {
     return [
-      { label: 'Leads Novos',       icon: '⬤', total: m.leads_novos          || 0, c: m.leads_novos_cesta          || 0, co: m.leads_novos_consult          || 0 },
-      { label: 'Conectados',        icon: '⬤', total: m.conectados            || 0, c: m.conectados_cesta            || 0, co: m.conectados_consult            || 0 },
-      { label: 'Reun. Marcadas',    icon: '⬤', total: m.reunioes_marcadas     || 0, c: m.reunioes_marc_cesta         || 0, co: m.reunioes_marc_consult         || 0 },
-      { label: 'Reun. Realizadas',  icon: '⬤', total: m.reunioes_feitas       || 0, c: m.reunioes_feitas_cesta       || 0, co: m.reunioes_feitas_consult       || 0 },
-      { label: 'Planos de Ação',    icon: '⬤', total: m.planos_acao           || 0, c: m.planos_cesta                || 0, co: m.planos_consult                || 0 },
-      { label: 'Onboarding',        icon: '⬤', total: m.onboarding            || 0, c: m.onboarding_cesta            || 0, co: m.onboarding_consult            || 0 },
-      { label: 'Clientes',          icon: '⬤', total: m.clientes_convertidos  || 0, c: m.clientes_cesta              || 0, co: m.clientes_consult              || 0 },
+      { label: 'Leads Novos',       total: m.leads_novos          || 0, c: m.leads_novos_cesta          || 0, co: m.leads_novos_consult          || 0 },
+      { label: 'Conectados',        total: m.conectados            || 0, c: m.conectados_cesta            || 0, co: m.conectados_consult            || 0 },
+      { label: 'Reun. Marcadas',    total: m.reunioes_marcadas     || 0, c: m.reunioes_marc_cesta         || 0, co: m.reunioes_marc_consult         || 0 },
+      { label: 'Reun. Realizadas',  total: m.reunioes_feitas       || 0, c: m.reunioes_feitas_cesta       || 0, co: m.reunioes_feitas_consult       || 0 },
+      { label: 'Planos de Ação',    total: m.planos_acao           || 0, c: m.planos_cesta                || 0, co: m.planos_consult                || 0 },
+      { label: 'Onboarding',        total: m.onboarding            || 0, c: m.onboarding_cesta            || 0, co: m.onboarding_consult            || 0 },
+      { label: 'Clientes',          total: m.clientes_convertidos  || 0, c: m.clientes_cesta              || 0, co: m.clientes_consult              || 0 },
     ];
   }
 
   // ══════════════════════════════════════════════════
   // TABELA COMPARATIVA
   // ══════════════════════════════════════════════════
-
   /**
    * Constrói linhas para a tabela comparativa Cesta × Consultoria.
-   * isCurrency: formatar como R$; isPct: formatar como %; isStr: exibir como-está.
    */
   function buildCompTable(m) {
-    const kpi  = derivedKPIs(m);
     const pctS = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
+    const kpi  = derivedKPIs(m);
 
     return [
       { metric: 'Leads Novos',        c: m.leads_novos_cesta           || 0, co: m.leads_novos_consult           || 0 },
@@ -204,10 +219,11 @@ const FunnelMetrics = (() => {
         isStr: true,
       },
       { metric: 'Planos de Ação',     c: m.planos_cesta                || 0, co: m.planos_consult                || 0 },
+      { metric: 'Planos Realizados',  c: '—',                              co: m.planos_realizados              || 0, isStr: true },
       { metric: 'Onboarding',         c: m.onboarding_cesta            || 0, co: m.onboarding_consult            || 0 },
       { metric: 'Clientes',           c: m.clientes_cesta              || 0, co: m.clientes_consult              || 0 },
       { metric: 'Captação',           c: m.captacao_cesta              || 0, co: m.captacao_consult              || 0, isCurrency: true },
-      { metric: 'Ticket Médio',       c: kpi.ticket_cesta,                  co: kpi.ticket_consult,                  isCurrency: true },
+      { metric: 'Ticket Médio',       c: kpi.ticket_cesta,                  co: kpi.ticket_consult,              isCurrency: true },
       {
         metric: '% Conv. Final',
         c:  pctS(m.clientes_cesta,   m.leads_novos_cesta),
@@ -218,7 +234,7 @@ const FunnelMetrics = (() => {
   }
 
   // ══════════════════════════════════════════════════
-  // MOCK DATA (para fallback quando Sheets offline)
+  // MOCK DATA (fallback quando leads_raw offline)
   // ══════════════════════════════════════════════════
   const MOCK_MOTOR_AUC = {
     leads_novos: 38,          leads_novos_cesta: 28,      leads_novos_consult: 7,      leads_novos_sem_tag: 3,
@@ -226,7 +242,7 @@ const FunnelMetrics = (() => {
     reunioes_marcadas: 22,    reunioes_marc_cesta: 15,    reunioes_marc_consult: 5,
     no_shows: 4,              no_shows_cesta: 3,          no_shows_consult: 1,
     reunioes_feitas: 18,      reunioes_feitas_cesta: 12,  reunioes_feitas_consult: 4,
-    planos_acao: 9,           planos_cesta: 5,            planos_consult: 4,
+    planos_acao: 9,           planos_cesta: 5,            planos_consult: 4,           planos_realizados: 3,
     onboarding: 3,            onboarding_cesta: 1,        onboarding_consult: 2,
     clientes_convertidos: 5,  clientes_cesta: 3,          clientes_consult: 2,         clientes_sem_tag: 1,
     captacao_total: 720000,   captacao_cesta: 45000,      captacao_consult: 675000,
@@ -235,18 +251,40 @@ const FunnelMetrics = (() => {
     alertas_sem_tag: 1,
   };
 
+  // Mock de leads_raw para fallback (estrutura flat)
+  const MOCK_LEADS_RAW = (() => {
+    const now = Math.floor(Date.now() / 1000);
+    const monthStart = Math.floor(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime() / 1000);
+    const rows = [];
+    // Gera linhas fake que reproduzem MOCK_MOTOR_AUC quando filtradas pelo mês atual
+    const add = (overrides) => rows.push({
+      id: rows.length + 1, created_at: monthStart + rows.length * 3600,
+      status_id: 97706575, closed_at: 0, price: 0,
+      has_tag_cesta: 0, has_tag_consult: 0, has_tag_noshow: 0,
+      has_briefing: 0, has_cobrar_dep: 0, has_completed_task: 0,
+      product: '', reached_reuniao: 0, reached_plano: 0,
+      ...overrides,
+    });
+    // 28 Cesta ativos
+    for (let i = 0; i < 28; i++) add({ product: 'cesta', has_tag_cesta: 1, status_id: i < 3 ? 97708015 : 97706579 });
+    // 7 Consultoria
+    for (let i = 0; i < 7; i++) add({ product: 'consultoria', has_tag_consult: 1, status_id: 97706579 });
+    // 3 sem tag
+    for (let i = 0; i < 3; i++) add({});
+    return rows;
+  })();
+
   // ══════════════════════════════════════════════════
   // API PÚBLICA
   // ══════════════════════════════════════════════════
   return {
     C,
-    resolveProduct,
-    isQualityAnomaly,
-    isReuniaoRealizada,
+    computeMotorAUC,
     derivedKPIs,
     buildFunnelSteps,
     buildCompTable,
     MOCK_MOTOR_AUC,
+    MOCK_LEADS_RAW,
   };
 
 })();

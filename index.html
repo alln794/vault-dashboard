@@ -217,6 +217,28 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .ops-stat{text-align:right}
 .ops-stat-val{font-family:'Space Mono',monospace;font-size:13px;font-weight:700}
 .ops-stat-label{font-size:9px;color:var(--muted);letter-spacing:0.5px}
+/* ── DATE PICKER ── */
+.date-range-bar{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg3);border:1px solid var(--border2);
+  border-radius:6px;padding:10px 14px;margin-bottom:20px;flex-wrap:wrap;
+}
+.date-range-bar label{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-right:4px}
+.date-input{
+  background:var(--bg);border:1px solid var(--border2);color:var(--text);
+  font-family:'Space Mono',monospace;font-size:11px;padding:5px 8px;
+  border-radius:4px;outline:none;cursor:pointer;
+}
+.date-input:focus{border-color:var(--gold)}
+.date-sep{color:var(--muted);font-size:11px}
+.date-presets{display:flex;gap:4px;margin-left:auto}
+.date-preset{
+  background:var(--bg);border:1px solid var(--border2);color:var(--muted);
+  font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;
+  font-family:'Space Mono',monospace;cursor:pointer;border-radius:3px;transition:all .15s;
+}
+.date-preset:hover,.date-preset.active{background:var(--gold-dim);border-color:var(--gold-glow);color:var(--gold)}
+.date-source-note{font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin-left:8px}
 /* ── MOTOR AUC ── */
 .motor-funnel{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}
 .motor-step{
@@ -605,6 +627,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
           <span class="section-sub">BASE: SAFRA / DATA DE CRIAÇÃO</span>
         </div>
 
+        <!-- Seletor de Período -->
+        <div class="date-range-bar">
+          <label>De</label>
+          <input type="date" class="date-input" id="motor-date-from">
+          <span class="date-sep">→</span>
+          <label>Até</label>
+          <input type="date" class="date-input" id="motor-date-to">
+          <div class="date-presets">
+            <button class="date-preset active" onclick="setMotorPreset('mes',this)">MÊS</button>
+            <button class="date-preset" onclick="setMotorPreset('semana',this)">SEMANA</button>
+            <button class="date-preset" onclick="setMotorPreset('trim',this)">TRIM.</button>
+            <button class="date-preset" onclick="setMotorPreset('ano',this)">ANO</button>
+          </div>
+          <span class="date-source-note" id="motor-source-note">— leads_raw</span>
+        </div>
+
         <!-- Alertas de Qualidade -->
         <div id="motor-alerts-wrap"></div>
 
@@ -810,13 +848,68 @@ const MOCK = {
     fernando_tasks: 13, fernando_atrasadas: 5,
     carlos_tasks: 14, carlos_atrasadas: 0
   },
-  motor_auc: null,  // populated from sheet or FunnelMetrics.MOCK_MOTOR_AUC
+  motor_auc: null,
+  leads_raw: [],   // linhas planas da aba leads_raw — base do filtro dinâmico
   last_updated: []
 };
 
 let DATA = JSON.parse(JSON.stringify(MOCK));
-DATA.motor_auc = JSON.parse(JSON.stringify(FunnelMetrics.MOCK_MOTOR_AUC));
+DATA.motor_auc  = JSON.parse(JSON.stringify(FunnelMetrics.MOCK_MOTOR_AUC));
+DATA.leads_raw  = FunnelMetrics.MOCK_LEADS_RAW.slice();
 let currentPeriod = 'mes';
+
+// ── Estado do Motor AUC ──
+let motorPeriod = 'mes'; // preset ativo
+let motorTsStart = 0;
+let motorTsEnd   = 0;
+
+function initMotorDates() {
+  const now   = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  // Default: mês corrente
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  document.getElementById('motor-date-from').value = firstDay;
+  document.getElementById('motor-date-to').value   = today;
+  applyMotorDates();
+}
+
+function applyMotorDates() {
+  const from = document.getElementById('motor-date-from').value;
+  const to   = document.getElementById('motor-date-to').value;
+  if (!from || !to) return;
+  // tsStart = início do dia "from" em UTC-3 (BRT)
+  motorTsStart = Math.floor(new Date(from + 'T00:00:00-03:00').getTime() / 1000);
+  motorTsEnd   = Math.floor(new Date(to   + 'T23:59:59-03:00').getTime() / 1000) + 1;
+  renderMotorAuc();
+}
+
+function setMotorPreset(preset, el) {
+  motorPeriod = preset;
+  document.querySelectorAll('.date-preset').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+
+  const now  = new Date();
+  let from, to = now.toISOString().slice(0, 10);
+
+  if (preset === 'mes') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  } else if (preset === 'semana') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 6);
+    from = d.toISOString().slice(0, 10);
+  } else if (preset === 'trim') {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - 3);
+    from = d.toISOString().slice(0, 10);
+  } else if (preset === 'ano') {
+    from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  }
+
+  document.getElementById('motor-date-from').value = from;
+  document.getElementById('motor-date-to').value   = to;
+  applyMotorDates();
+}
 
 // ═══════════════════════════════════════════════════
 // PARSE CSV — correto, suporta campos entre aspas
@@ -854,7 +947,7 @@ function parseCSVRow(line) {
 async function loadData() {
   setStatus('loading');
   const base = `https://docs.google.com/spreadsheets/d/${SHEETS_ID}/gviz/tq?tqx=out:csv&sheet=`;
-  const tabs = ['executivo','funil','reunioes','receita','origem','operacional','motor_auc','last_updated'];
+  const tabs = ['executivo','funil','reunioes','receita','origem','operacional','motor_auc','leads_raw','last_updated'];
 
   try {
     const results = await Promise.all(
@@ -862,7 +955,7 @@ async function loadData() {
         .then(r => { if (!r.ok) throw new Error(t); return r.text(); })
       )
     );
-    const [exec, funil, reun, rec, orig, ops, motor, lu] = results.map(parseCSV);
+    const [exec, funil, reun, rec, orig, ops, motor, raw, lu] = results.map(parseCSV);
 
     // ── EXECUTIVO ──
     if (exec && exec.length > 0) {
@@ -991,6 +1084,17 @@ async function loadData() {
         perdidos_periodo: n('perdidos_periodo'),
         alertas_sem_tag: n('alertas_sem_tag'),
       };
+    }
+
+    // ── LEADS RAW (base do filtro dinâmico) ──
+    if (raw && raw.length > 0) {
+      DATA.leads_raw = raw;
+      // Recalcula motor_auc com os dados reais usando o período selecionado
+      if (motorTsStart > 0) {
+        DATA.motor_auc = FunnelMetrics.computeMotorAUC(raw, motorTsStart, motorTsEnd);
+      }
+      const note = document.getElementById('motor-source-note');
+      if (note) note.textContent = `${raw.length} leads · leads_raw`;
     }
 
     // ── LAST UPDATED ──
@@ -1380,7 +1484,13 @@ function renderOrigem() {
 
 // ── MOTOR AUC ──
 function renderMotorAuc() {
-  const m = DATA.motor_auc;
+  // Recalcula a partir de leads_raw se disponível; senão usa motor_auc pré-agregado
+  let m;
+  if (DATA.leads_raw && DATA.leads_raw.length > 0 && motorTsStart > 0) {
+    m = FunnelMetrics.computeMotorAUC(DATA.leads_raw, motorTsStart, motorTsEnd);
+  } else {
+    m = DATA.motor_auc;
+  }
   if (!m) return;
   const kpi = FunnelMetrics.derivedKPIs(m);
 
@@ -1597,8 +1707,20 @@ function updateMetaDate() {
 }
 
 // ═══════════════════════════════════════════════════
-// INIT — sem loop infinito
+// INIT
 // ═══════════════════════════════════════════════════
+initMotorDates(); // seta datas padrão e calcula motorTsStart/End
+
+// Event listeners dos date inputs — filtro ao mudar manualmente
+document.getElementById('motor-date-from').addEventListener('change', () => {
+  document.querySelectorAll('.date-preset').forEach(b => b.classList.remove('active'));
+  applyMotorDates();
+});
+document.getElementById('motor-date-to').addEventListener('change', () => {
+  document.querySelectorAll('.date-preset').forEach(b => b.classList.remove('active'));
+  applyMotorDates();
+});
+
 renderAll(); // render mock data immediately
 loadData();  // then try to load real data
 setInterval(loadData, REFRESH_INTERVAL); // auto-refresh every 5 min
