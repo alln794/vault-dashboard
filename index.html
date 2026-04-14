@@ -1697,7 +1697,16 @@ function setPeriod(p, el) {
   currentPeriod = p;
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
-  // Future: filter data by period
+
+  // Se o painel Motor AUC está ativo, sincroniza o date picker com o preset
+  const motorPanel = document.getElementById('panel-motor');
+  if (motorPanel && motorPanel.classList.contains('active')) {
+    // Mapeia o preset do topbar para o preset do Motor AUC
+    const presetMap = { mes: 'mes', semana: 'semana', trim: 'trim' };
+    const motorPreset = presetMap[p] || 'mes';
+    const motorBtn = document.querySelector(`.date-preset[onclick*="'${motorPreset}'"]`);
+    if (motorBtn) setMotorPreset(motorPreset, motorBtn);
+  }
 }
 
 function updateMetaDate() {
