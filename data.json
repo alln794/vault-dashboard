@@ -1,0 +1,294 @@
+{
+  "periodo": "Abril 2026",
+  "gerado_em": "2026-04-17T00:52:41.608025+00:00",
+  "data_label": "16/04/2026 21:52",
+  "funil": {
+    "a_trabalhar": 1,
+    "tentativa_contato": 4,
+    "conectado": 13,
+    "reuniao_diagnostico": 15,
+    "plano_acao": 7,
+    "onboarding": 7,
+    "ganho": 25,
+    "perdido": 144
+  },
+  "leads_criados": 61,
+  "captacao_total": 666887,
+  "ticket_medio_geral": 55574,
+  "cesta": {
+    "leads": 26,
+    "ganhos": 10,
+    "captacao": 93562,
+    "ticket_medio": 9356,
+    "reunioes_marcadas": 25,
+    "reunioes_feitas": 22,
+    "reunioes_a_fazer": 1,
+    "no_shows": 3,
+    "plano_marcado": 1,
+    "plano_feito": 0,
+    "onboarding": 4,
+    "perdidos": 47
+  },
+  "consultoria": {
+    "leads": 8,
+    "ganhos": 2,
+    "captacao": 573325,
+    "ticket_medio": 286662,
+    "reunioes_marcadas": 8,
+    "reunioes_feitas": 6,
+    "reunioes_a_fazer": 0,
+    "no_shows": 2,
+    "plano_marcado": 6,
+    "plano_feito": 1,
+    "onboarding": 2,
+    "perdidos": 24
+  },
+  "eduardo": {
+    "nome": "Eduardo Salzano",
+    "foco": "Consultoria",
+    "reunioes_marcadas": 29,
+    "reunioes_feitas": 29,
+    "reunioes_a_fazer": 0,
+    "no_shows": 0,
+    "plano_marcado": 4,
+    "plano_feito": 1,
+    "onboarding": 2,
+    "ganhos": 2,
+    "captacao": 411000,
+    "link_gravacao_pct": 0.0
+  },
+  "fernando": {
+    "nome": "Fernando Martines",
+    "foco": "Cesta Inteligente",
+    "reunioes_marcadas": 41,
+    "reunioes_feitas": 41,
+    "reunioes_a_fazer": 1,
+    "no_shows": 0,
+    "plano_marcado": 2,
+    "plano_feito": 0,
+    "onboarding": 2,
+    "ganhos": 10,
+    "captacao": 255887,
+    "link_gravacao_pct": 0.0
+  },
+  "sdr": {
+    "nome": "Carlos Paiva",
+    "leads_recebidos": 88,
+    "tentativas": 4,
+    "conectados": 13,
+    "reunioes_agendadas": 85,
+    "no_shows_devolvidos": 5,
+    "reagendamentos_ok": 0,
+    "hoje": {
+      "ligacoes": 50,
+      "whatsapp": 3,
+      "tarefas_abertas": 83,
+      "tarefas_atrasadas": 10
+    },
+    "cadencia": [],
+    "tarefas_tipo": {
+      "ligacao": 0,
+      "whatsapp": 0,
+      "reuniao": 0
+    },
+    "contatos_semana": []
+  },
+  "origem": {
+    "proprio": {
+      "leads": 3,
+      "ganhos": 2,
+      "captacao": 6963,
+      "conv": 0.667
+    },
+    "parceiros": {
+      "leads": 36,
+      "ganhos": 8,
+      "captacao": 1665792,
+      "conv": 0.222
+    },
+    "marketing": {
+      "leads": 62,
+      "ganhos": 5,
+      "captacao": 615217,
+      "conv": 0.081
+    },
+    "produtos": {
+      "leads": 2,
+      "ganhos": 1,
+      "captacao": 14915,
+      "conv": 0.5
+    }
+  },
+  "canais": [
+    {
+      "nome": "Time Marketing",
+      "leads": 57,
+      "ganhos": 3,
+      "captacao": 410994
+    },
+    {
+      "nome": "Influencers",
+      "leads": 22,
+      "ganhos": 6,
+      "captacao": 1449117
+    },
+    {
+      "nome": "Time Interno",
+      "leads": 4,
+      "ganhos": 1,
+      "captacao": 199325
+    },
+    {
+      "nome": "Consultor-Próprio",
+      "leads": 2,
+      "ganhos": 1,
+      "captacao": 5963
+    },
+    {
+      "nome": "Time Produtos",
+      "leads": 2,
+      "ganhos": 1,
+      "captacao": 14915
+    },
+    {
+      "nome": "Indicação-Próprio",
+      "leads": 1,
+      "ganhos": 0,
+      "captacao": 0
+    },
+    {
+      "nome": "Empresas",
+      "leads": 1,
+      "ganhos": 1,
+      "captacao": 37000
+    },
+    {
+      "nome": "Parceiros Comerciais",
+      "leads": 1,
+      "ganhos": 1,
+      "captacao": 37000
+    }
+  ],
+  "subcanais": [
+    {
+      "nome": "Funil",
+      "leads": 60,
+      "captacao": 15892
+    },
+    {
+      "nome": "Gabriel Della",
+      "leads": 24,
+      "captacao": 1449117
+    },
+    {
+      "nome": "Suporte",
+      "leads": 4,
+      "captacao": 400000
+    },
+    {
+      "nome": "Igor Carneiro",
+      "leads": 2,
+      "captacao": 5000
+    },
+    {
+      "nome": "Allan Resende",
+      "leads": 1,
+      "captacao": 0
+    },
+    {
+      "nome": "Eduardo Salzano",
+      "leads": 1,
+      "captacao": 37000
+    },
+    {
+      "nome": "Fernando Martines",
+      "leads": 1,
+      "captacao": 5963
+    },
+    {
+      "nome": "Ultra",
+      "leads": 1,
+      "captacao": 14915
+    },
+    {
+      "nome": "Autocustódia",
+      "leads": 1,
+      "captacao": 0
+    },
+    {
+      "nome": "Ana Fan",
+      "leads": 1,
+      "captacao": 0
+    },
+    {
+      "nome": "Iuri Senna",
+      "leads": 1,
+      "captacao": 374000
+    }
+  ],
+  "historico_mensal": [
+    {
+      "mes": "Abr",
+      "cesta": 93562,
+      "consultoria": 573325
+    }
+  ],
+  "historico_reunioes": [
+    {
+      "mes": "09/04",
+      "marcadas": 45,
+      "feitas": 45,
+      "no_shows": 8
+    },
+    {
+      "mes": "14/04",
+      "marcadas": 78,
+      "feitas": 78,
+      "no_shows": 12
+    },
+    {
+      "mes": "16/04",
+      "marcadas": 85,
+      "feitas": 85,
+      "no_shows": 15
+    },
+    {
+      "mes": "16/04",
+      "marcadas": 85,
+      "feitas": 85,
+      "no_shows": 15
+    }
+  ],
+  "saude": {
+    "leads_sem_tarefa": 1,
+    "tarefas_atrasadas_total": 19,
+    "leads_sem_origem": 114,
+    "leads_sem_briefing": 11,
+    "leads_sem_gravacao": 0,
+    "qualidade_crm_pct": 0.52,
+    "tarefas_por_resp": [
+      {
+        "nome": "Carlos Paiva",
+        "abertas": 83,
+        "atrasadas": 10
+      },
+      {
+        "nome": "Fernando Martines",
+        "abertas": 13,
+        "atrasadas": 4
+      },
+      {
+        "nome": "Eduardo Salzano",
+        "abertas": 20,
+        "atrasadas": 5
+      }
+    ],
+    "workflows": [
+      {
+        "nome": "populate_sheets.py",
+        "status": "ok",
+        "ultima": "16/04/2026 21:52"
+      }
+    ]
+  }
+}
